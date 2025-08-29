@@ -39,8 +39,8 @@ Use the file-creator subagent to create file: tasks.md inside of the current fea
   <subtasks>
     - count: up to 8 per major task
     - format: decimal notation (1.1, 1.2)
-    - first_subtask: typically write tests
-    - last_subtask: verify all tests pass
+    - first_subtask: typically "Write TestBox tests for [component]"
+    - last_subtask: verify all tests pass using "box wheels test"
   </subtasks>
 </task_structure>
 
@@ -48,21 +48,22 @@ Use the file-creator subagent to create file: tasks.md inside of the current fea
   ## Tasks
 
   - [ ] 1. [MAJOR_TASK_DESCRIPTION]
-    - [ ] 1.1 Write tests for [COMPONENT]
+    - [ ] 1.1 Write TestBox tests for [COMPONENT] (use: wheels generate test model/controller [Name])
     - [ ] 1.2 [IMPLEMENTATION_STEP]
     - [ ] 1.3 [IMPLEMENTATION_STEP]
-    - [ ] 1.4 Verify all tests pass
+    - [ ] 1.4 Verify all tests pass using box wheels test
 
   - [ ] 2. [MAJOR_TASK_DESCRIPTION]
-    - [ ] 2.1 Write tests for [COMPONENT]
+    - [ ] 2.1 Write TestBox tests for [COMPONENT] (use: wheels generate test model/controller [Name])
     - [ ] 2.2 [IMPLEMENTATION_STEP]
 </task_template>
 
 <ordering_principles>
   - Consider technical dependencies
-  - Follow TDD approach
+  - Follow TDD approach with TestBox BDD syntax
   - Group related functionality
   - Build incrementally
+  - Start each major task with test generation and writing
 </ordering_principles>
 
 </step>

@@ -141,9 +141,11 @@ Execute the parent task and all sub-tasks in order using test-driven development
 <execution_order>
   <subtask_1_tests>
     IF sub-task 1 is "Write tests for [feature]":
-      - Write all tests for the parent feature
+      - Generate test file using: `wheels generate test model [ModelName]` or `wheels generate test controller [ControllerName]`
+      - Write TestBox BDD tests with describe/it blocks
       - Include unit tests, integration tests, edge cases
-      - Run tests to ensure they fail appropriately
+      - Use test factories for consistent data creation
+      - Run tests to ensure they fail appropriately: `box wheels test`
       - Mark sub-task 1 complete
   </subtask_1_tests>
 
@@ -158,7 +160,8 @@ Execute the parent task and all sub-tasks in order using test-driven development
 
   <final_subtask_verification>
     IF final sub-task is "Verify all tests pass":
-      - Run entire test suite
+      - Run entire test suite using: `box wheels test`
+      - Run specific directory tests if needed: `box wheels test --directory=tests/specs/unit`
       - Fix any remaining failures
       - Ensure no regressions
       - Mark final sub-task complete
@@ -167,14 +170,18 @@ Execute the parent task and all sub-tasks in order using test-driven development
 
 <test_management>
   <new_tests>
-    - Written in first sub-task
+    - Written in first sub-task using TestBox BDD syntax
+    - Generated using: `wheels generate test model [Name]` or `wheels generate test controller [Name]`
+    - Follow TestBox structure: describe/it blocks with beforeEach/afterEach
     - Cover all aspects of parent feature
     - Include edge cases and error handling
+    - Use factories: create("user", {role: "admin"}) or build("product")
   </new_tests>
   <test_updates>
     - Made during implementation sub-tasks
     - Update expectations for changed behavior
     - Maintain backward compatibility
+    - Run tests frequently: `box wheels test --directory=tests/specs/unit`
   </test_updates>
 </test_management>
 
@@ -216,8 +223,8 @@ Use the test-runner subagent to run and verify only the tests specific to this p
 </final_verification>
 
 <instructions>
-  ACTION: Use test-runner subagent
-  REQUEST: "Run tests for [this parent task's test files]"
+  ACTION: Use wheels-test subagent
+  REQUEST: "Run Wheels tests for [this parent task's test files] using box wheels test"
   WAIT: For test-runner analysis
   PROCESS: Returned failure information
   VERIFY: 100% pass rate for task-specific tests

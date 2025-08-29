@@ -18,15 +18,15 @@ Follow these steps to mark your progress updates, create a recap, and deliver th
 
 <process_flow>
 
-<step number="1" subagent="test-runner" name="test_suite_verification">
+<step number="1" subagent="wheels-test" name="test_suite_verification">
 
 ### Step 1: Run All Tests
 
-Use the test-runner subagent to run the ALL tests in the application's test suite to ensure no regressions and fix any failures until all tests pass.
+Use the wheels-test subagent to run ALL tests in the application's test suite to ensure no regressions and fix any failures until all tests pass.
 
 <instructions>
-  ACTION: Use test-runner subagent
-  REQUEST: "Run the full test suite"
+  ACTION: Use wheels-test subagent
+  REQUEST: "Run the full Wheels test suite using: box wheels test"
   WAIT: For test-runner analysis
   PROCESS: Fix any reported failures
   REPEAT: Until all tests pass
@@ -34,10 +34,16 @@ Use the test-runner subagent to run the ALL tests in the application's test suit
 
 <test_execution>
   <order>
-    1. Run entire test suite
-    2. Fix any failures
+    1. Run entire test suite using: box wheels test
+    2. Run coverage if needed: box wheels test --coverage
+    3. Fix any failures
   </order>
   <requirement>100% pass rate</requirement>
+  <test_structure>
+    - Unit tests in tests/specs/unit/
+    - Integration tests in tests/specs/integration/
+    - Functional tests in tests/specs/functional/
+  </test_structure>
 </test_execution>
 
 <failure_handling>

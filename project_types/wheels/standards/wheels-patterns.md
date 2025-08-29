@@ -897,22 +897,32 @@ When using Wheels form helpers with Bootstrap configuration:
 
 ## Database Migration Patterns
 
+### Important: Automatic ID Column Behavior
+
+**CRITICAL**: Wheels automatically creates numeric ID columns - do NOT define them manually in migrations.
+
+- **Default**: `createTable(name="posts")` automatically creates auto-incrementing `id` column
+- **Explicit**: `id=true` (default) creates automatic ID, `id=false` disables it
+- **Custom name**: `primaryKey="customId"` changes column name from default `id`
+- **Junction tables**: Use `id=false` for many-to-many tables without ID
+
 ### Create Table Migration
 ```cfml
 component extends="Migration" {
   
   function up() {
     transaction {
+      // IMPORTANT: id=true automatically creates 'id' column - don't define it manually
       createTable(name="posts", id=true, force=true) {
         t.string(columnNames="title", limit=255, null=false);
         t.text(columnNames="body");
         t.string(columnNames="excerpt", limit=500);
-        t.integer(columnNames="userId", null=false);
+        t.integer(columnNames="userId", null=false);  // Foreign key
         t.integer(columnNames="categoryId");
         t.string(columnNames="status", limit=20, default="draft");
         t.boolean(columnNames="published", default=false);
         t.datetime(columnNames="publishedAt");
-        t.timestamps();
+        t.timestamps(); // Creates createdAt and updatedAt
       };
       
       // Add indexes for performance
@@ -933,6 +943,36 @@ component extends="Migration" {
   function down() {
     transaction {
       dropTable("posts");
+    }
+  }
+}
+```
+
+### Junction Table Migration (Without Automatic ID)
+```cfml
+component extends="Migration" {
+  
+  function up() {
+    transaction {
+      // id=false prevents automatic ID column creation
+      createTable(name="posts_tags", id=false) {
+        t.integer(columnNames="postId", null=false);
+        t.integer(columnNames="tagId", null=false);
+        t.timestamps();
+      };
+      
+      // Create composite primary key
+      addIndex(table="posts_tags", columnNames="postId,tagId", unique=true);
+      
+      // Add foreign key indexes
+      addIndex(table="posts_tags", columnNames="postId");
+      addIndex(table="posts_tags", columnNames="tagId");
+    }
+  }
+  
+  function down() {
+    transaction {
+      dropTable("posts_tags");
     }
   }
 }
@@ -1179,9 +1219,448 @@ component extends="Migration" {
 }
 ```
 
-## Testing Patterns
+## Testing Patterns with TestBox
 
-### Model Tests
+### Test Generation Commands
+Generate tests using the Wheels CLI:
+```bash
+# Model test
+wheels generate test model User
+
+# Controller test with CRUD
+wheels generate test controller Users --crud
+
+# API test
+wheels generate test api v1.users
+```
+
+### Test Execution Commands
+```bash
+# Run all tests
+box wheels test
+
+# Run specific directory
+box wheels test --directory=tests/specs/unit
+
+# Watch mode for TDD
+box testbox watch
+
+# Run with coverage
+box wheels test --coverage --coverageReporter=html
+```
+
+### TestBox BDD Structure
+Basic TestBox test structure using describe/it blocks:
+
+```cfml
+component extends="testbox.system.BaseSpec" {
+  
+  function run() {
+    
+    describe("User Model Tests", () => {
+      
+      beforeEach(() => {
+        variables.testUser = model("User").new({
+          name: "Test User",
+          email: "test@example.com",
+          password: "password123"
+        });
+      });
+      
+      afterEach(() => {
+        if (StructKeyExists(variables, "testUser") && IsObject(variables.testUser)) {
+          variables.testUser.delete();
+        }
+      });
+      
+      it("should validate required fields", () => {
+        var user = model("User").new();
+        
+        expect(user.valid()).toBeFalse("User should not be valid without required fields");
+        expect(user.errorsOn("name")).toHaveLength(1, "Should have name validation error");
+        expect(user.errorsOn("email")).toHaveLength(1, "Should have email validation error");
+      });
+      
+      it("should validate email format", () => {
+        variables.testUser.email = "invalid-email";
+        
+        expect(variables.testUser.valid()).toBeFalse("User should not be valid with invalid email");
+        expect(variables.testUser.errorsOn("email")).toHaveLength(1, "Should have email format error");
+      });
+      
+      it("should save valid user", () => {
+        expect(variables.testUser.save()).toBeTrue("Valid user should save successfully");
+        expect(variables.testUser.hasErrors()).toBeFalse("Saved user should not have errors");
+        expect(variables.testUser.key()).toBeNumeric("Saved user should have numeric key");
+      });
+      
+    });
+  }
+}
+```
+
+### Wheels-Aware Test Base Class
+Custom base class extending TestBox with Wheels-specific helpers:
+
+```cfml
+component extends="testbox.system.BaseSpec" {
+  
+  function beforeAll() {
+    // Setup test database connection
+    application.wheels.dataSourceName = "wheels_test";
+    
+    // Disable caching for tests
+    application.wheels.cacheActions = false;
+    application.wheels.cachePartials = false;
+    application.wheels.cacheQueries = false;
+  }
+  
+  function setup() {
+    // Called before each test method
+    super.setup();
+    
+    // Start transaction for test isolation
+    this.$wheels_test_transaction = true;
+    queryExecute("BEGIN TRANSACTION");
+  }
+  
+  function teardown() {
+    // Called after each test method
+    super.teardown();
+    
+    // Rollback transaction to clean up test data
+    if (StructKeyExists(this, "$wheels_test_transaction")) {
+      queryExecute("ROLLBACK");
+      StructDelete(this, "$wheels_test_transaction");
+    }
+  }
+  
+  // Helper method to create test models
+  function createTestModel(string modelName, struct properties = {}) {
+    return model(arguments.modelName).create(arguments.properties);
+  }
+  
+  // Helper method for controller testing
+  function processTestRequest(required string route, string method = "GET", struct params = {}) {
+    local.originalParams = Duplicate(params);
+    local.originalCGI = Duplicate(CGI);
+    
+    try {
+      // Mock request parameters
+      params.clear();
+      params.putAll(arguments.params);
+      
+      // Set request method
+      CGI.REQUEST_METHOD = arguments.method;
+      
+      // Process the request (simplified)
+      local.result = $request(argumentCollection=arguments);
+      
+      return local.result;
+      
+    } finally {
+      // Restore original state
+      params.clear();
+      params.putAll(local.originalParams);
+      CGI = local.originalCGI;
+    }
+  }
+}
+```
+
+### Model Tests with Factories
+Using factories for consistent test data:
+
+```cfml
+component extends="WheelsTestBase" {
+  
+  function run() {
+    
+    describe("Post Model with Associations", () => {
+      
+      beforeEach(() => {
+        // Create test data using factories
+        variables.testAuthor = createTestModel("User", {
+          name: "John Doe",
+          email: "john@example.com"
+        });
+        
+        variables.testCategory = createTestModel("Category", {
+          name: "Technology"
+        });
+      });
+      
+      it("should create post with associations", () => {
+        var post = model("Post").create({
+          title: "Test Post",
+          body: "This is a test post",
+          userId: variables.testAuthor.id,
+          categoryId: variables.testCategory.id
+        });
+        
+        expect(post.hasErrors()).toBeFalse("Post should save without errors");
+        expect(post.author().name).toBe("John Doe", "Should load associated author");
+        expect(post.category().name).toBe("Technology", "Should load associated category");
+      });
+      
+      it("should validate associations exist", () => {
+        var post = model("Post").create({
+          title: "Test Post",
+          body: "This is a test post",
+          userId: 99999,  // Non-existent user
+          categoryId: variables.testCategory.id
+        });
+        
+        expect(post.hasErrors()).toBeTrue("Post should have validation errors");
+        expect(post.errorsOn("userId")).toHaveLength(1, "Should have user association error");
+      });
+      
+    });
+  }
+}
+```
+
+### Controller Tests with HTTP Mocking
+Testing controller actions with mocked requests:
+
+```cfml
+component extends="WheelsTestBase" {
+  
+  function run() {
+    
+    describe("Posts Controller", () => {
+      
+      beforeEach(() => {
+        // Create test data
+        variables.testUser = createTestModel("User", {
+          name: "Test User",
+          email: "test@example.com"
+        });
+        
+        variables.testPost = createTestModel("Post", {
+          title: "Sample Post",
+          body: "Sample content",
+          userId: variables.testUser.id
+        });
+      });
+      
+      describe("GET /posts", () => {
+        
+        it("should display posts index", () => {
+          var result = processTestRequest(route="posts", method="GET");
+          
+          expect(result).toHaveKey("posts", "Should include posts in response");
+          expect(result.posts.recordCount).toBeGTE(1, "Should have at least one post");
+        });
+        
+      });
+      
+      describe("POST /posts", () => {
+        
+        it("should create new post with valid data", () => {
+          var params = {
+            post: {
+              title: "New Test Post",
+              body: "New test content",
+              userId: variables.testUser.id
+            }
+          };
+          
+          var result = processTestRequest(route="posts", method="POST", params=params);
+          
+          expect(result.post.hasErrors()).toBeFalse("Post should be created without errors");
+          expect(result.post.title).toBe("New Test Post", "Should save correct title");
+        });
+        
+        it("should show errors with invalid data", () => {
+          var params = {
+            post: {
+              title: "",  // Required field empty
+              body: "Some content"
+            }
+          };
+          
+          var result = processTestRequest(route="posts", method="POST", params=params);
+          
+          expect(result.post.hasErrors()).toBeTrue("Post should have validation errors");
+          expect(result.template).toBe("new", "Should render new template with errors");
+        });
+        
+      });
+      
+    });
+  }
+}
+```
+
+### Test Factory Helpers
+Reusable factory methods for test data:
+
+```cfml
+component {
+  
+  function userFactory(struct overrides = {}) {
+    var defaults = {
+      name: "Test User #randRange(1, 9999)#",
+      email: "test#randRange(1, 9999)#@example.com",
+      password: "password123",
+      status: "active"
+    };
+    
+    defaults.putAll(overrides);
+    
+    return model("User").create(defaults);
+  }
+  
+  function postFactory(struct overrides = {}) {
+    // Ensure we have a user for the post
+    if (!StructKeyExists(overrides, "userId")) {
+      var user = userFactory();
+      overrides.userId = user.id;
+    }
+    
+    var defaults = {
+      title: "Test Post #randRange(1, 9999)#",
+      body: "This is test content for the post.",
+      published: true,
+      publishedAt: now()
+    };
+    
+    defaults.putAll(overrides);
+    
+    return model("Post").create(defaults);
+  }
+  
+  function categoryFactory(struct overrides = {}) {
+    var defaults = {
+      name: "Test Category #randRange(1, 9999)#",
+      description: "Test category description"
+    };
+    
+    defaults.putAll(overrides);
+    
+    return model("Category").create(defaults);
+  }
+}
+```
+
+### Integration Test Pattern
+Full stack testing with database and HTTP:
+
+```cfml
+component extends="testbox.system.BaseSpec" {
+  
+  function run() {
+    
+    describe("User Registration Integration", () => {
+      
+      beforeEach(() => {
+        // Clean slate for integration tests
+        queryExecute("DELETE FROM users WHERE email LIKE 'integration_test_%'");
+      });
+      
+      it("should register user end-to-end", () => {
+        var registrationData = {
+          user: {
+            name: "Integration Test User",
+            email: "integration_test_#createUUID()#@example.com",
+            password: "securePassword123",
+            passwordConfirmation: "securePassword123"
+          }
+        };
+        
+        // Submit registration form
+        var response = processRequest(
+          route="users",
+          method="POST",
+          params=registrationData
+        );
+        
+        // Verify user was created in database
+        var createdUser = model("User").findOne(where="email = ?", 
+                                               whereParams=[registrationData.user.email]);
+        
+        expect(IsObject(createdUser)).toBeTrue("User should be created in database");
+        expect(createdUser.name).toBe(registrationData.user.name, "Should save correct name");
+        
+        // Verify redirect to success page
+        expect(response.redirectedTo).toContain("login", "Should redirect to login page");
+      });
+      
+    });
+  }
+}
+```
+
+### Test Database Configuration
+```cfml
+// In Application.cfc or test-specific config
+if (application.wheels.environment == "testing") {
+  this.datasource = "wheels_test";
+  
+  // Test-specific database settings
+  set(dataSourceName="wheels_test");
+  set(cacheActions=false);
+  set(cachePartials=false);
+  set(cacheQueries=false);
+}
+```
+
+### Test Helpers and Utilities
+Common test helper methods:
+
+```cfml
+// test/support/TestHelpers.cfc
+component {
+  
+  // Create and save model instance
+  function create(string factory, struct attributes = {}) {
+    switch(arguments.factory) {
+      case "user":
+        return userFactory(arguments.attributes);
+      case "post":
+        return postFactory(arguments.attributes);
+      case "category":
+        return categoryFactory(arguments.attributes);
+      default:
+        throw(message="Unknown factory: #arguments.factory#");
+    }
+  }
+  
+  // Build without saving
+  function build(string factory, struct attributes = {}) {
+    var instance = create(argumentCollection=arguments);
+    instance.reload();  // Reload to unsaved state
+    return instance;
+  }
+  
+  // Create multiple instances
+  function createList(string factory, numeric count, struct attributes = {}) {
+    var results = [];
+    for (var i = 1; i <= arguments.count; i++) {
+      ArrayAppend(results, create(arguments.factory, arguments.attributes));
+    }
+    return results;
+  }
+  
+  // Login as user for testing
+  function loginAs(numeric userId) {
+    var user = model("User").findByKey(arguments.userId);
+    session.userId = user.id;
+    session.authenticated = true;
+    return user;
+  }
+  
+  // Assert validation errors
+  function assertHasErrors(any model, string property) {
+    expect(arguments.model.hasErrors()).toBeTrue("Model should have validation errors");
+    expect(arguments.model.errorsOn(arguments.property)).toHaveLength_GT(0, 
+           "Should have errors on property: #arguments.property#");
+  }
+}
+```
+
+### Legacy Model Tests (Pre-TestBox)
 ```cfml
 component extends="wheels.Test" {
   
@@ -1948,6 +2427,33 @@ Pattern for environment configuration files:
 ```
 
 ## Common Anti-Patterns to Avoid
+
+### Migration Anti-Patterns
+```cfml
+// WRONG - defining ID column when using automatic behavior
+createTable(name="users", id=true) {
+  t.integer(columnNames="id", null=false);  // Redundant and wrong!
+  t.string(columnNames="name", limit=100, null=false);
+}
+
+// CORRECT - let Wheels create the ID automatically
+createTable(name="users", id=true) {
+  t.string(columnNames="name", limit=100, null=false);
+  // ID column is created automatically
+}
+
+// WRONG - forgetting to disable ID for junction tables
+createTable(name="posts_tags") {  // Creates unnecessary 'id' column
+  t.integer(columnNames="postId", null=false);
+  t.integer(columnNames="tagId", null=false);
+}
+
+// CORRECT - disable automatic ID for junction tables
+createTable(name="posts_tags", id=false) {
+  t.integer(columnNames="postId", null=false);
+  t.integer(columnNames="tagId", null=false);
+}
+```
 
 ### Framework Violations
 ```cfml
