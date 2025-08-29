@@ -6,20 +6,22 @@ Global tech stack defaults for Agent OS projects, overridable in project-specifi
 
 - App Framework: Wheels 3.0+ (CFML MVC Framework)
 - Language: CFML (ColdFusion Markup Language)
-- CFML Engine: Lucee 6.2+ (preferred)
-- Primary Database: PostgreSQL 17+
-- ORM: Wheels ORM
+- CFML Engine: Lucee 6+ (preferred) / Adobe CF 2021+
+- Primary Database: H2 (development), PostgreSQL 17+ (production)
+- ORM: Wheels ActiveRecord
 - Database Migration: Wheels Migrator
-- CLI Tool: CommandBox Wheels CLI
+- CLI Tool: CommandBox
 - JavaScript Framework: HTMX 2.0 / Alpine.js 4.0
+- Build Tool: CommandBox 
+- Import Strategy: CFML components (backend)
 - Package Manager: Commandbox/Forgebox.io (CFML modules)
 - CSS Framework: TailwindCSS 4.0+
 - UI Components: TailwindUI
 - Font Provider: Google Fonts
 - Font Loading: Self-hosted for performance
-- Icons: FontAwesome Pro
-- Testing Framework: TestBox (CFML) integrated into Wheels
-- Testing Strategy: box wheels test 
+- Icons: Lucide / FontAwesome
+- Testing Framework: TestBox (CFML)
+- Testing Strategy: Direct TestBox testing
 - Application Hosting: Self hosted in Datacenter
 - CFML Server: CommandBox with Undertow/Tomcat
 - Hosting Region: Primary data center
@@ -31,7 +33,7 @@ Global tech stack defaults for Agent OS projects, overridable in project-specifi
 - CI/CD Trigger: Push to main/staging branches
 - Tests: TestBox suite before deployment
 - Production Environment: main branch
-- Development Environment: Local CommandBox server
+- Development Environment: Local CommandBox server with H2 database
 
 ## CommandBox Server Management
 
